@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
+/* Design tokens. Components use these semantic names, never raw hex. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f6f4f7;
+  --surface: #ffffff;
+  --surface-muted: #f3eff4;
+  --fg: #18151b;
+  --fg-muted: #625b69;
+  --border: #ebe5ee;
+  --primary: #e11d48;
+  --primary-hover: #be123c;
+  --primary-soft: #ffe4e6;
+  --on-primary: #ffffff;
+  --pass: #52525b;
+  --pass-soft: #f4f4f5;
+  --shadow-card: 0 1px 2px rgb(24 21 27 / 0.04), 0 12px 32px -12px rgb(24 21 27 / 0.18);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #0f0d11;
+    --surface: #1a171d;
+    --surface-muted: #241f28;
+    --fg: #f5f2f7;
+    --fg-muted: #b3abba;
+    --border: #2e2833;
+    --primary: #fb5476;
+    --primary-hover: #ff7390;
+    --primary-soft: #3a1520;
+    --on-primary: #1a0a0f;
+    --pass: #d4d4d8;
+    --pass-soft: #27272a;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 16px 40px -12px rgb(0 0 0 / 0.6);
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary: var(--on-primary);
+  --color-pass: var(--pass);
+  --color-pass-soft: var(--pass-soft);
+  --shadow-card: var(--shadow-card);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-muted) 25%, var(--border) 50%, var(--surface-muted) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
 }
