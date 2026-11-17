@@ -1,5 +1,7 @@
 # Coy · Discover
 
+[![CI](https://github.com/BEASTXCHAITANYA/coy-discover/actions/workflows/ci.yml/badge.svg)](https://github.com/BEASTXCHAITANYA/coy-discover/actions/workflows/ci.yml)
+
 A swipe-based **Discover** tab for [Coy](https://getcoy.com), built for the Coy SDE Intern assignment (Part B).
 Swipe right to like and left to pass. A match happens only when both people have liked each other, and **nobody ever learns who liked them unless it is mutual**.
 
