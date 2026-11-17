@@ -2,103 +2,62 @@
 
 [![CI](https://github.com/BEASTXCHAITANYA/coy-discover/actions/workflows/ci.yml/badge.svg)](https://github.com/BEASTXCHAITANYA/coy-discover/actions/workflows/ci.yml)
 
-A swipe-based **Discover** tab for [Coy](https://getcoy.com), built for the Coy SDE Intern assignment (Part B).
-Swipe right to like and left to pass. A match happens only when both people have liked each other, and **nobody ever learns who liked them unless it is mutual**.
+My take on a swipe-style **Discover** tab for [Coy](https://getcoy.com), built for Part B of the SDE intern assignment.
 
-## Run it
+Swipe right to like, left to pass. You only match when the other person liked you too, and the app never gives away who liked you before that. That second part is Coy's whole promise, so most of my effort went there.
 
-Requires **Node.js 22.13+**, because it uses Node's built-in `node:sqlite` (no native modules to compile).
+## Getting started
+
+You'll need Node 22.13 or newer (I'm using the built-in `node:sqlite`, so there's nothing native to compile).
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000 → opens on Discover
-npm test           # 36 tests: matching logic, privacy rules, HTTP API, rate limiting
-npm run typecheck
-npm run lint
+npm run dev     # opens on http://localhost:3000/discover
+npm test
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the type-check, lint, tests and production build on every push and pull request.
+The database (`data/coy.db`) creates and seeds itself on first run. There are 32 profiles, and 10 of them have already liked you, so you'll hit a match pretty quickly. Once you've swiped through everyone, hit **Reset demo data** to start over.
 
-The SQLite database is created and seeded automatically at `data/coy.db` the first time you run the app.
-To replay the demo, swipe through everyone and tap **Reset demo data**, or delete `data/coy.db`.
+## How it's put together
 
-**Demo tip:** 10 of the 32 seeded profiles have already liked you, so a few likes will produce an "It's a match!" screen.
+- **Next.js 16 + Tailwind** for the UI, **Motion** for the drag and card animations
+- **Route handlers** for the API, backed by **SQLite**
+- **Vitest** for tests, and a GitHub Actions workflow that runs type-check, lint, tests and build on every push
 
-## What's inside
-
-| | |
-|---|---|
-| **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS 4, Motion (Framer Motion) for drag gestures and animations, Phosphor icons |
-| **Backend** | Next.js Route Handlers |
-| **Data** | SQLite via `node:sqlite`, persisted to `data/coy.db` |
-| **Tests** | Vitest, run against an in-memory database |
-
-```
-src/
-  lib/
-    db.ts            schema, seeding, connection (single logged-in user, ME = 1)
-    discover.ts      getFeed / recordSwipe / getMatches: all matching and privacy logic
-    discover.test.ts logic and privacy tests (in-memory DB)
-    rate-limit.ts    fixed-window limiter for POST /swipe
-    seed-data.ts     32 mock profiles (+ the logged-in user)
-  app/api/{feed,swipe,matches,reset}/route.ts   thin HTTP wrappers
-  app/api/api.test.ts                           HTTP-level tests: status codes, JSON shapes, concurrency
-  components/        swipe card, Discover view, match overlay, matches list, tab bar
-```
-
-The business logic in `lib/discover.ts` is plain functions that take a database handle. The routes only parse input and map errors to status codes, so the tests exercise the real logic with no HTTP mocking.
+All the real logic lives in `src/lib/discover.ts` as plain functions that take a database handle. The API routes just parse the request and hand off to it, which made the logic easy to test directly.
 
 ## API
 
-The routes live under `/api/*`. Rewrites also serve them at the exact paths named in the assignment (`/feed`, `/swipe`, `/matches`).
+| Endpoint | What it does |
+|---|---|
+| `GET /feed` | Profiles you haven't swiped on yet |
+| `POST /swipe` | Body `{ profileId, action: "like" \| "pass" }`. Returns `{ matched: false }` or `{ matched: true, match }` |
+| `GET /matches` | Your mutual matches, newest first |
 
-| Method & path | Body | Response |
-|---|---|---|
-| `GET /feed` | n/a | `{ profiles: Profile[] }`: profiles the user hasn't swiped on yet |
-| `POST /swipe` | `{ profileId: number, action: "like" \| "pass" }` | `{ matched: false }` or `{ matched: true, match: Match }` |
-| `GET /matches` | n/a | `{ matches: Match[] }`: mutual matches only, newest first |
-| `POST /api/reset` | n/a | Demo-only reset. Disabled in production unless `COY_ALLOW_RESET=true` |
+These are also available under `/api/*`. `/swipe` rejects bad input with a proper status: `400` for invalid data, `404` for an unknown profile, `409` if you've already swiped that person, and `429` if you swipe faster than a human could.
 
-`Profile` = `{ id, name, age, college, city, bio, interests, photoUrl }`, and `Match` adds `matchedAt`.
-`/swipe` validates input strictly and returns these errors:
+## Keeping likes private
 
-| Status | `error` | When |
-|---|---|---|
-| 400 | `invalid_json` / `invalid_body` / `unexpected_field` | Malformed body, or any field other than `profileId` and `action` |
-| 400 | `invalid_action` / `invalid_profile` / `self_swipe` | Bad action, non-integer id, or swiping on yourself |
-| 404 | `not_found` | Unknown profile |
-| 409 | `already_swiped` | Swipes are final |
-| 413 | `payload_too_large` | Body over 1 KB |
-| 415 | `unsupported_media_type` | Not `application/json` |
-| 429 | `rate_limited` | More than 60 swipes a minute from one client (comes with a `Retry-After` header) |
+This was the part I cared about most. All of these have tests:
 
-## Privacy decisions
+- **The feed gives nothing away.** It only returns public profile fields, and the order is fixed when the data is seeded, so people who liked you don't float to the top. I check that the feed is identical with and without incoming likes.
+- **Passing reveals nothing.** Passing on someone who liked you gets the same response as passing on anyone else. Like and pass also run the same queries, so you can't read anything from response times.
+- **Swipes are final.** You can't pass on someone and then like them to test whether they liked you. Coy has the same rule for adding crushes, which is also why I left out an undo button.
+- **Matches are strictly mutual.** A match is created in one transaction, only after both likes exist. Even two identical requests sent at the same moment produce just one match.
+- **No scripted probing.** Swipes are rate-limited, and unexpected fields in the request body are rejected.
 
-Coy's core promise is that **nobody learns who liked them unless it's mutual**. Every rule below is covered by a test in `discover.test.ts`.
+## Small UX touches
 
-1. **The feed leaks nothing.** Profiles expose an explicit allow-list of public fields: there is no `likedYou`, score or rank. Feed order comes from a random `feed_rank` fixed at seed time, so profiles that liked you aren't boosted or grouped. A test checks that the feed is **byte-for-byte identical** with and without incoming likes.
-2. **A pass reveals nothing.** Passing on someone who liked you returns exactly the same response (`{ matched: false }`) as passing on anyone else. A like that doesn't match looks the same whether the other person passed on you or never saw you.
-3. **Swipes are final.** `(swiper, target)` is the primary key, so a second swipe is rejected with `409`. Without this you could pass, then like again, and watch for a match to test whether someone liked you. This mirrors Coy's real "adding is final" rule. For the same reason the UI has no undo.
-4. **Matches are mutual only.** Matches are created only inside the like path, after confirming the reverse like, in one `BEGIN IMMEDIATE` transaction. They are stored canonically (`user_a < user_b`), so a pair can never match twice, even when two identical requests arrive at once (tested). `/matches` never includes one-sided likes in either direction.
-5. **No timing hints.** Like and pass run the same database queries, so response time doesn't reveal whether the other person liked you.
-6. **No automated probing.** `/swipe` is rate-limited (60 a minute per client) and rejects unexpected fields, so a script can't hammer the API or slip in extra parameters.
-7. **Minimal client state.** The client never receives anything about incoming likes. It can't leak what it doesn't have.
+- Cards tilt as you drag and show a LIKE or PASS stamp, and the button you're heading towards grows. Short drags spring back.
+- On desktop you can use the buttons or the ← / → keys.
+- A one-time hint on first visit shows that the cards can be dragged.
+- Swipes feel instant. If saving fails, the card comes back and you get a message.
+- There are loading, error and "all caught up" states, plus a **New** badge on matches you haven't seen yet.
+- Light and dark mode, reduced-motion support, screen-reader labels, and comfortable tap targets.
+- The avatars are illustrated placeholders, so no real faces are used.
 
-## UX notes
+## What I'd do next
 
-- **Mobile-first.** Drag cards with your finger. The card tilts as you drag, a LIKE or PASS stamp fades in, and a release past 110 px or a fast flick sends it off. Smaller drags spring back.
-- **Feedback that tracks your finger.** While you drag, the Like or Pass button you're heading towards grows, so the gesture and the button visibly mean the same thing. Android phones also give a short vibration when a swipe is committed.
-- **First-visit hint.** On the first visit the top card nudges left and right, with a "Drag right to like, left to pass" pill. It disappears after the first swipe and is remembered in `localStorage`.
-- **No blank cards.** The next four avatars are preloaded while you look at the current one.
-- **Desktop.** Pass and Like buttons, plus the **← / →** arrow keys.
-- **Optimistic swipes.** The card leaves instantly. If the request fails, it comes back with a toast, so no swipe is lost silently.
-- **Match moment.** A full-screen "It's a match!" with both avatars. Focus moves to the dialog and `Esc` closes it.
-- **States covered.** Loading skeleton, error with retry, an "all caught up" empty state (which mentions how many matches you have), and an empty Matches list. Matches made since your last visit get a **New** badge.
-- **Accessibility.** Labelled icon buttons, 44px+ touch targets, swipes announced through an `aria-live` region, visible focus rings, `prefers-reduced-motion` (no tilt or fly-out, just fades), and light and dark themes.
-- **Photos.** Illustrated placeholder avatars from DiceBear (the assignment allows placeholders), so no real people's faces are used.
-
-## Trade-offs and next steps
-
-- **A single demo user, no auth**, as the assignment specifies. Every function takes a `userId`, so adding real users is a wiring change, not a rewrite.
-- **SQLite doesn't persist on serverless hosts** such as Vercel. For a hosted demo, swap `lib/db.ts` for Postgres. The logic and tests stay the same.
-- **The rate limiter lives in memory**, which is fine for one process. Running several instances would need a shared store such as Redis.
+- SQLite won't persist on serverless hosting like Vercel, so a hosted demo would need Postgres. The logic itself wouldn't change.
+- The rate limiter keeps its counts in memory, which is fine for one server. With more than one, I'd move it to something shared like Redis.
+- There's a single demo user and no login, as the brief allows. Every function already takes a user ID, so adding real accounts wouldn't need much rework.
